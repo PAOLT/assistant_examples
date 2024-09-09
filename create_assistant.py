@@ -1,55 +1,80 @@
 from openai import AzureOpenAI
 from dotenv import load_dotenv
 import os
-import json
-import time
-from IPython.display import clear_output
+# import json
+# import time
+# from IPython.display import clear_output
 
-load_dotenv() # config = dotenv_values()
+# script arguments
+sys_msg='''You are a financial assistant who answer customer questions to help them understanding the details about Woodgrove management funds. 
+You are upbeat and friendly. If the customer greets you, you greet them back. 
+You provide succint and short answers to customer questions, by sharing no more than 3 bullet points. 
+Only use the provided context. If the context is not useful, do not use your own knowledge to make up answers. 
+Instead, state that you are an assistant for Woodgrove Financial products only and to consider rephrasing the question.'''
+assistant_name = "Financial Analyst Assistant"
 
-client = AzureOpenAI(
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),  
-    api_version="2024-05-01-preview",
-    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-    )
+# vectore store arguments
+# check: https://platform.openai.com/docs/api-reference/assistants/createAssistant?lang=python
 
+file_paths = ["Users/paolt/assistant_examples/Woodgrove Asset Management  - Prospective of Asset Management Funds.pdf"]
 
-assistant = client.beta.assistants.create(
-  name="Financial Analyst Assistant",
-  instructions="You are an expert financial analyst. Use your knowledge base to answer questions about audited financial statements.",
-  model=os.getenv("AZURE_OPENAI_MODEL"),
-  tools=[{"type": "file_search"}],
-)
+chunking_strategy_type = "static" # can be 'auto' and 'static'
+max_chunk_size = 1024
+overlap_size = 50
+chunking_strategy = {"type": chunking_strategy_type, "static": {"max_chunk_size_tokens": max_chunk_size,  "chunk_overlap_tokens": overlap_size}}
+# chunking_strategy = {"type": chunking_strategy_type, "parameters": {"max_chunk_size": max_chunk_size,  "overlap_size": overlap_size}}
 
-# Create a vector store called "Financial Statements"
-vector_store = client.beta.vector_stores.create(name="Financial Statements")
- 
-# Ready the files for upload to OpenAI
-file_paths = ["/home/azureuser/cloudfiles/code/Users/paolt/okr_spike/bert_paper.pdf", "/home/azureuser/cloudfiles/code/Users/paolt/okr_spike/gpt_2_paper.pdf"]
-file_streams = [open(path, "rb") for path in file_paths]
-print("Indexing files")
+max_num_results = 5
 
-# Use the upload and poll SDK helper to upload the files, add them to the vector store,
-# and poll the status of the file batch for completion.
-file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
-  vector_store_id=vector_store.id, files=file_streams
-)
- 
-# You can print the status and the file counts of the batch to see the result of this operation.
+ranker = "auto" # can be 'auto' and 'default...'
+score_threshold = 0.7
+ranking_options = {"ranker": ranker, "score_threshold": score_threshold}
 
-# while file_batch.file_counts.in_progress>0:
-#     time.sleep(3)
+# load configuration parameters into environment variables
+load_dotenv()
 
-print(file_batch.status)
-print(file_batch.file_counts)
+# connect to Az OAI
+try:
+  client = AzureOpenAI(
+      api_key=os.getenv("AZURE_OPENAI_API_KEY"),  
+      api_version="2024-05-01-preview",
+      azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+      )
+except Exception as e:
+  print("Failed to connect to the assistant")
+  raise e  
 
-assistant = client.beta.assistants.update(
-  assistant_id=assistant.id,
-  tool_resources={"file_search": {"vector_store_ids": [vector_store.id]}},
-)
+# Create an assistant
+try:
+  print(f"Creating assistant {assistant_name}...", end=' ')
+  assistant = client.beta.assistants.create(
+    name=assistant_name,
+    instructions=sys_msg,
+    model=os.getenv("AZURE_OPENAI_MODEL"),
+    tools=[{"type": "file_search", "file_search": {"max_num_results": max_num_results}}], #, "ranking_options": ranking_options
+  )
+  print("OK")
+except Exception as e:
+  print(f"FAILED!")
+  raise e
 
-print(f"The following assistant have been created with {file_batch.file_counts.completed} files:")
-print(assistant.id)
+# Create a vector store 
+try:
+  print(f"Creating a vector store...", end=' ')
+  vector_store = client.beta.vector_stores.create(name="Woodgroove vector store")
+  file_streams = [open(path, "rb") for path in file_paths]
+  
+  # Use the upload and poll SDK helper to upload the files, add them to the vector store, and poll the status of the file batch for completion.
+  file_batch = client.beta.vector_stores.file_batches.upload_and_poll(vector_store_id=vector_store.id, files=file_streams, chunking_strategy=chunking_strategy)
+  print(f"{file_batch.status}; {file_batch.file_counts}")
+except Exception as e:
+  print("FAILED!")
+  raise e
 
-
-
+try:
+  assistant = client.beta.assistants.update(assistant_id=assistant.id,tool_resources={"file_search": {"vector_store_ids": [vector_store.id]}})
+  print(f"The following assistant have been created with {file_batch.file_counts.completed} files:")
+  print(assistant.id)
+except Exception as e:
+  print("Failed to finalize the assistant creation")
+  raise e
