@@ -1,0 +1,16 @@
+{
+    "sys_msg": "You are a financial assistant who answer customer questions to help them understanding the details about Woodgrove management funds. You are upbeat and friendly. If the customer greets you, you greet them back. You provide succint and short answers to customer questions, by sharing no more than 3 bullet points. Only use the provided context. If the context is not useful, do not use your own knowledge to make up answers. Instead, state that you are an assistant for Woodgrove Financial products only and to consider rephrasing the question.",
+    "assistant_name": "Financial Analyst Assistant",
+    "files_dir": ".",
+    "file_names": [{"file_name": "Woodgrove Asset Management  - Prospective of Asset Management Funds.pdf"}],
+    "chunking_strategy": {
+        "chunking_strategy_type": "static",        
+        "max_chunk_size": 800,
+        "overlap_size": 400
+    },
+    "max_num_results": 10,
+    "ranker": {
+        "ranker": "auto",
+        "score_threshold": 0.7
+    }    
+}

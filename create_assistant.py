@@ -1,39 +1,36 @@
 from openai import AzureOpenAI
 from dotenv import load_dotenv
 import os
-# import json
-# import time
-# from IPython.display import clear_output
+import json
 
-# script arguments
-sys_msg='''You are a financial assistant who answer customer questions to help them understanding the details about Woodgrove management funds. 
-You are upbeat and friendly. If the customer greets you, you greet them back. 
-You provide succint and short answers to customer questions, by sharing no more than 3 bullet points. 
-Only use the provided context. If the context is not useful, do not use your own knowledge to make up answers. 
-Instead, state that you are an assistant for Woodgrove Financial products only and to consider rephrasing the question.'''
-assistant_name = "Financial Analyst Assistant"
+# parse script arguments from config file
+with open("./assistant_def.json") as f:
+  assistant_def = json.load(f)
 
-# vectore store arguments
-# check: https://platform.openai.com/docs/api-reference/assistants/createAssistant?lang=python
+sys_msg = assistant_def['sys_msg']
+assistant_name = assistant_def['assistant_name'] 
 
-file_paths = ["Users/paolt/assistant_examples/Woodgrove Asset Management  - Prospective of Asset Management Funds.pdf"]
+# file_paths = ["Users/paolt/assistant_examples/Woodgrove Asset Management  - Prospective of Asset Management Funds.pdf"]
+file_paths = []
+for file_name in assistant_def["file_names"]:
+  file_path = os.path.join(assistant_def['files_dir'], file_name['file_name'])
+  file_paths.append(file_path)
 
-chunking_strategy_type = "static" # can be 'auto' and 'static'
-max_chunk_size = 1024
-overlap_size = 50
-chunking_strategy = {"type": chunking_strategy_type, "static": {"max_chunk_size_tokens": max_chunk_size,  "chunk_overlap_tokens": overlap_size}}
-# chunking_strategy = {"type": chunking_strategy_type, "parameters": {"max_chunk_size": max_chunk_size,  "overlap_size": overlap_size}}
+chunking_strategy = {"type": assistant_def['chunking_strategy']['chunking_strategy_type'], #"static" # can be 'auto' and 'static' 
+                     "static": {"max_chunk_size_tokens": assistant_def['chunking_strategy']['max_chunk_size'], #1024  
+                                "chunk_overlap_tokens": assistant_def['chunking_strategy']['overlap_size'], #50
+                                }
+                    } 
 
-max_num_results = 5
+max_num_results = assistant_def['max_num_results'] # 5
 
-ranker = "auto" # can be 'auto' and 'default...'
-score_threshold = 0.7
-ranking_options = {"ranker": ranker, "score_threshold": score_threshold}
-
-# load configuration parameters into environment variables
-load_dotenv()
+ranking_options = {"ranker": assistant_def['ranker']['ranker'], # can be 'auto' and 'default...'
+                   "score_threshold": assistant_def['ranker']['score_threshold']}
 
 # connect to Az OAI
+
+load_dotenv()
+
 try:
   client = AzureOpenAI(
       api_key=os.getenv("AZURE_OPENAI_API_KEY"),  
@@ -63,8 +60,6 @@ try:
   print(f"Creating a vector store...", end=' ')
   vector_store = client.beta.vector_stores.create(name="Woodgroove vector store")
   file_streams = [open(path, "rb") for path in file_paths]
-  
-  # Use the upload and poll SDK helper to upload the files, add them to the vector store, and poll the status of the file batch for completion.
   file_batch = client.beta.vector_stores.file_batches.upload_and_poll(vector_store_id=vector_store.id, files=file_streams, chunking_strategy=chunking_strategy)
   print(f"{file_batch.status}; {file_batch.file_counts}")
 except Exception as e:
